@@ -1,5 +1,9 @@
 from celery import shared_task
 from .models import Article, Keyword, KeywordArticleMatch, Notification
+from .telegram_bot import send_telegram_notification
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @shared_task
@@ -35,8 +39,17 @@ def match_keywords_to_articles():
     If a keyword appears in the article title or content,
     a KeywordArticleMatch and Notification are created.
     """
+    logger.info("Starting keyword matching for all keywords...")
     keywords = Keyword.objects.select_related('user').all()
-    # Only check articles that haven't been matched yet for each keyword
+    total_matches = 0
+    
+    if not keywords.exists():
+        logger.info("No keywords found in database")
+        return "No keywords to match"
+    
+    logger.info(f"Checking {keywords.count()} keywords against articles...")
+    
+    # Check ALL keywords every time
     for kw in keywords:
         search_term = kw.keyword_name.lower()
         # Get articles not yet matched to this keyword
@@ -48,20 +61,35 @@ def match_keywords_to_articles():
             models_q_title_or_content(search_term)
         )
 
+        if new_articles.exists():
+            logger.info(f"Found {new_articles.count()} new articles for keyword '{kw.keyword_name}' (user: {kw.user.username})")
+
         for article in new_articles:
             # Create the match
-            KeywordArticleMatch.objects.get_or_create(
+            match, match_created = KeywordArticleMatch.objects.get_or_create(
                 keyword=kw,
                 article=article,
             )
+            
             # Create notification for the user
-            Notification.objects.get_or_create(
+            notification, notif_created = Notification.objects.get_or_create(
                 user=kw.user,
                 keyword=kw,
                 article=article,
             )
+            
+            # Send Telegram notification immediately if new match
+            if notif_created:
+                logger.info(f"Sending Telegram notification to {kw.user.username} for article: {article.title[:50]}...")
+                result = send_telegram_notification(kw.user, article, kw)
+                if result:
+                    logger.info(f"✓ Notification sent successfully to {kw.user.username}")
+                    total_matches += 1
+                else:
+                    logger.warning(f"✗ Failed to send notification to {kw.user.username}")
 
-    return "Keyword matching completed"
+    logger.info(f"Keyword matching completed. Total new notifications sent: {total_matches}")
+    return f"Keyword matching completed. Sent {total_matches} notifications"
 
 
 def models_q_title_or_content(search_term):

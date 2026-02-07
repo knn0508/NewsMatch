@@ -1,6 +1,12 @@
 from django.contrib import admin
-from .models import Keyword, Article, KeywordArticleMatch, Notification, UserKeywordMatch, UserKeywordMatch
+from .models import UserProfile, Keyword, Article, KeywordArticleMatch, Notification, UserKeywordMatch
 
+
+@admin.register(UserProfile)
+class UserProfileAdmin(admin.ModelAdmin):
+    list_display = ['user', 'telegram_chat_id', 'created_at', 'updated_at']
+    search_fields = ['user__username', 'telegram_chat_id']
+    list_filter = ['created_at']
 
 
 @admin.register(Keyword)

@@ -2,6 +2,16 @@ from django.db import models
 from django.contrib.auth.models import User
 
 
+class UserProfile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile', verbose_name="User")
+    telegram_chat_id = models.BigIntegerField(unique=True, null=True, blank=True, verbose_name="Telegram Chat ID")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.user.username} - {self.telegram_chat_id}"
+
+
 class Keyword(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="User")
     keyword_name = models.CharField(max_length=255, verbose_name="Keyword Name", db_index=True)
