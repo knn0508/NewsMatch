@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import UserProfile, Keyword, Article, KeywordArticleMatch, Notification, UserKeywordMatch
+from .models import UserProfile, Keyword, Article, KeywordArticleMatch, Notification
 
 
 @admin.register(UserProfile)
@@ -37,9 +37,3 @@ class NotificationAdmin(admin.ModelAdmin):
     list_display = ['user', 'keyword', 'article', 'status', 'created_at']
     list_filter = ['status', 'user']
     search_fields = ['article__title', 'keyword__keyword_name']
-
-@admin.register(UserKeywordMatch)
-class UserKeywordMatchAdmin(admin.ModelAdmin):
-    list_display = ['user', 'keyword', 'created_at']
-    list_filter = ['user']
-    search_fields = ['keyword__keyword_name']

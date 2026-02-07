@@ -87,17 +87,3 @@ class Notification(models.Model):
 
     def __str__(self):
         return f"Notification for {self.user.username} - {self.article.title}"
-    
-class UserKeywordMatch(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="User")
-    keyword = models.ForeignKey(Keyword, on_delete=models.CASCADE, verbose_name="Keyword")
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Created At")
-
-    class Meta:
-        unique_together = ('user', 'keyword')
-        indexes = [
-            models.Index(fields=['user', 'keyword']),
-        ]
-
-    def __str__(self):
-        return f"{self.user.username} - {self.keyword.keyword_name}"
