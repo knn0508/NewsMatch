@@ -55,6 +55,7 @@ Autonomous news monitoring system for Azerbaijani media. Scrapes news websites, 
 - Commands: `/start`, `/help`, `/add_keyword`, `/remove_keyword`, `/my_keywords`, `/latest_news`
 - Long-polling based (no webhooks needed)
 - Keyword aliases generated automatically on subscription
+- Telegram bot link: https://t.me/News_NotifierBot
 
 ## Project Structure
 
