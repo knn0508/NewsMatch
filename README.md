@@ -1,4 +1,4 @@
-# MEDIATRENDS
+# NewsMatch
 
 Autonomous news monitoring system for Azerbaijani media. Scrapes news websites, matches articles to user-defined keywords using AI-powered text search with multilingual translations, and delivers notifications via Telegram.
 
