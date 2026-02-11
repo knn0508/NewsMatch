@@ -22887,3 +22887,4 @@ WARNING 2026-02-12 00:28:17,821 elasticsearch_service Deleting existing index 'n
 INFO 2026-02-12 00:28:18,433 elasticsearch_service Created ElasticSearch index 'news_articles'
 INFO 2026-02-12 00:28:27,266 elasticsearch_service Connected to ElasticSearch at http://localhost:9200
 INFO 2026-02-12 00:28:27,878 elasticsearch_service Bulk indexed 35 articles (success=35, failed=0)
+INFO 2026-02-12 00:30:00,009 tasks Dispatched 0 scrape tasks (2 skipped due to interval) out of 2 active sources
