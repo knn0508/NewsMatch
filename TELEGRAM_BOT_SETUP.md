@@ -75,11 +75,10 @@ python manage.py run_telegram_bot
 5. Wait for article notifications!
 
 ### Automatic Process:
-1. Celery tasks scrape articles periodically
-2. System matches articles with user keywords
-3. When a match is found:
-   - Creates a notification in database
-   - Sends Telegram message to user with article details
+1. **Scraping task** (every 5 min) — scrapes news sources, saves articles to DB
+2. **Embedding task** (every 5 min, offset) — generates embeddings for new articles + indexes in ElasticSearch
+3. **Matching & Notification task** (every 5 min, offset) — matches embedded articles to user keywords, sends Telegram notifications
+4. Each task runs independently, so scraping never blocks notifications
 
 ## Bot Token Configuration
 

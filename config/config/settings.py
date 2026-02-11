@@ -10,7 +10,17 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
+import os
+import sys
 from pathlib import Path
+
+# Fix Windows console encoding for Azerbaijani/Unicode characters
+if sys.platform == 'win32':
+    os.environ.setdefault('PYTHONIOENCODING', 'utf-8')
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    if hasattr(sys.stderr, 'reconfigure'):
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -115,7 +125,15 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
-# Celery konfiqurasiyası
+
+# Default primary key field type
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+# =============================================================================
+# Celery Configuration
+# =============================================================================
+
 CELERY_BROKER_URL = 'redis://localhost:6379/0'
 CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
 CELERY_ACCEPT_CONTENT = ['json']
@@ -124,5 +142,96 @@ CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'Asia/Baku'
 
 
-TG_BOT_TOKEN = "8328248487:AAFyQYtSUnEuKam2QZXTVBoDur7HnfxxGAY"
-TG_CHAT_ID = 5428705088
+# =============================================================================
+# Telegram Bot
+# =============================================================================
+
+TG_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '8328248487:AAFyQYtSUnEuKam2QZXTVBoDur7HnfxxGAY')
+
+
+# =============================================================================
+# Jina AI Configuration (FREE — no API key required for basic usage)
+# =============================================================================
+
+JINA_API_KEY = os.getenv('JINA_API_KEY', '')  # Optional, for higher rate limits
+JINA_READER_URL = 'https://r.jina.ai/'
+
+
+# =============================================================================
+# ElasticSearch Configuration
+# =============================================================================
+
+ELASTICSEARCH_HOST = os.getenv('ELASTICSEARCH_HOST', 'http://localhost:9200')
+ELASTICSEARCH_USER = os.getenv('ELASTICSEARCH_USER', '')
+ELASTICSEARCH_PASSWORD = os.getenv('ELASTICSEARCH_PASSWORD', '')
+
+
+# =============================================================================
+# Sentence-Transformers Configuration (100% FREE, open-source)
+# =============================================================================
+
+EMBEDDING_MODEL = 'paraphrase-multilingual-mpnet-base-v2'
+EMBEDDING_DIMENSION = 768  # Model output dimensionality
+
+
+# =============================================================================
+# Matching Configuration
+# =============================================================================
+
+# Primary matching is TEXT SEARCH (keyword found in title/content → always matches).
+# Semantic matching is ONLY used for cross-language matches (different scripts).
+SEMANTIC_TITLE_THRESHOLD = 0.45  # Keyword embedding vs title embedding threshold
+
+
+# =============================================================================
+# Scraping Configuration
+# =============================================================================
+
+SCRAPE_TIMEOUT = 30         # HTTP request timeout in seconds
+MAX_ARTICLES_PER_SCRAPE = 20  # Max articles to scrape per source per run
+
+
+# =============================================================================
+# Logging
+# =============================================================================
+
+# Ensure log directory exists
+LOG_DIR = BASE_DIR / 'logs'
+LOG_DIR.mkdir(exist_ok=True)
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'file': {
+            'level': 'INFO',
+            'class': 'logging.FileHandler',
+            'filename': str(LOG_DIR / 'scraper.log'),
+            'formatter': 'verbose',
+            'encoding': 'utf-8',
+        },
+        'console': {
+            'level': 'INFO',
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+            'stream': 'ext://sys.stdout',
+        },
+    },
+    'loggers': {
+        'scraper': {
+            'handlers': ['file', 'console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}

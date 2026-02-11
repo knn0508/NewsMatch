@@ -1,10 +1,31 @@
-import requests
-import logging
-from django.conf import settings
-from django.contrib.auth.models import User
-from .models import UserProfile, Keyword
+"""
+Telegram bot for MEDIATRENDS — handles user commands and notifications.
 
-logger = logging.getLogger(__name__)
+All keyword matching is AI-powered using semantic embeddings (sentence-transformers).
+No legacy BeautifulSoup scraping — everything is scraped via Jina AI.
+
+Commands:
+    /start                    — Welcome message
+    /help                     — Help guide
+    /add_keyword <keyword>    — Subscribe to a topic with semantic matching
+    /remove_keyword <keyword> — Unsubscribe from a topic
+    /my_keywords              — List all semantic keyword subscriptions
+    /latest_news              — Show recent matched articles (last 24h)
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import timedelta
+from typing import Any
+
+import requests
+from django.conf import settings
+from django.utils import timezone
+
+from .models import UserKeyword, SentArticle
+
+logger = logging.getLogger('scraper')
 
 
 class TelegramBot:
@@ -27,24 +48,6 @@ class TelegramBot:
             logger.error(f"Error sending message to {chat_id}: {e}")
             return None
     
-    def send_article_notification(self, chat_id, article, keyword):
-        """Send article notification to user"""
-        message = f"""
-🔔 <b>New Article Match!</b>
-
-📰 <b>Title:</b> {article.title}
-
-🔑 <b>Keyword:</b> {keyword.keyword_name}
-
-📅 <b>Date:</b> {article.date}
-
-🔗 <b>Link:</b> {article.url}
-
-📝 <b>Preview:</b>
-{article.content[:300]}...
-"""
-        return self.send_message(chat_id, message)
-    
     def get_updates(self, offset=None):
         """Get updates from Telegram"""
         url = f"{self.base_url}/getUpdates"
@@ -60,70 +63,51 @@ class TelegramBot:
             return None
     
     def process_message(self, message):
-        """Process incoming message"""
+        """Process incoming message — dispatch to the appropriate handler."""
         chat_id = message['chat']['id']
         text = message.get('text', '')
-        
+
         # Handle commands
         if text.startswith('/start'):
             return self.handle_start(chat_id, message)
         elif text.startswith('/help'):
             return self.handle_help(chat_id)
-        elif text.startswith('/addkeyword'):
-            return self.handle_add_keyword(chat_id, text, message)
-        elif text.startswith('/removekeyword'):
-            return self.handle_remove_keyword(chat_id, text, message)
-        elif text.startswith('/mykeywords'):
-            return self.handle_list_keywords(chat_id, message)
-        elif text.startswith('/register'):
-            return self.handle_register(chat_id, message)
+        elif text.startswith('/add_keyword'):
+            return self.handle_add_semantic_keyword(chat_id, text, message)
+        elif text.startswith('/remove_keyword'):
+            return self.handle_remove_semantic_keyword(chat_id, text, message)
+        elif text.startswith('/my_keywords'):
+            return self.handle_list_semantic_keywords(chat_id, message)
+        elif text.startswith('/latest_news'):
+            return self.handle_latest_news(chat_id, message)
         else:
             return self.send_message(
-                chat_id, 
+                chat_id,
                 "❓ Unknown command. Use /help to see available commands."
             )
     
     def handle_start(self, chat_id, message):
         """Handle /start command"""
-        telegram_username = message['chat'].get('username')
         first_name = message['chat'].get('first_name', 'User')
         
-        if not telegram_username:
-            error_message = f"""
-❌ <b>No Telegram Username Detected!</b>
-
-Hello {first_name}, you need to set a Telegram username to use this bot.
-
-<b>How to set a Telegram username:</b>
-1. Open Telegram Settings
-2. Tap on your profile
-3. Edit "Username" field
-4. Set a unique username (e.g., @john_doe)
-5. Save and come back here
-
-Once you have a username, send /start again!
-"""
-            return self.send_message(chat_id, error_message)
-        
         welcome_message = f"""
-👋 <b>Welcome to Media Trends Bot, @{telegram_username}!</b>
+👋 <b>Welcome to Media Trends Bot, {first_name}!</b>
 
-This bot helps you track news articles based on your keywords and sends instant notifications when matching articles are found.
+This bot uses <b>AI-powered semantic matching</b> to track news articles and send you instant notifications when relevant articles are found.
 
 <b>📋 Available Commands:</b>
 
-/register - Register your account with your Telegram username
-/addkeyword - Add a keyword to track (e.g., /addkeyword technology)
-/removekeyword - Remove a keyword (e.g., /removekeyword technology)
-/mykeywords - View all your tracked keywords
+/add_keyword - Add a keyword to track. We prefer use exact phrases for better matching (e.g., /add_keyword Baku city)
+/remove_keyword - Remove a keyword (e.g., /remove_keyword Baku city)
+/my_keywords - View all your tracked keywords
+/latest_news - Show recent matched articles (last 24h)
 /help - Show detailed help
 
 <b>🚀 Quick Start:</b>
-1. Send /register to link your account
-2. Send /addkeyword YOUR_TOPIC to start tracking
-3. Get instant notifications when articles match! 🔔
+1. Send /add_keyword YOUR_TOPIC to start tracking
+2. Get instant notifications when articles match! 🔔
 
-Let's get started! Send /register now.
+🧠 Semantic matching means the AI understands context — not just exact text matches!
 """
         return self.send_message(chat_id, welcome_message)
     
@@ -136,287 +120,36 @@ Let's get started! Send /register now.
 
 🔹 /start - Start the bot and see welcome message
 🔹 /help - Show this help message
-🔹 /register - Register with your Telegram username
-🔹 /addkeyword KEYWORD - Add a keyword to track
-🔹 /removekeyword KEYWORD - Remove a keyword
-🔹 /mykeywords - Show your tracked keywords
+🔹 /add_keyword KEYWORD - Add a keyword to track. We prefer use exact phrases for better matching (e.g., /add_keyword Baku city)
+🔹 /remove_keyword KEYWORD - Remove a keyword (e.g., /remove_keyword Baku city)
+🔹 /my_keywords - Show your tracked keywords
+🔹 /latest_news - Show recent matched articles (last 24h)
 
 <b>📖 How It Works:</b>
 
-1. <b>Register:</b> Link your Telegram account
-   Command: /register
-   
-2. <b>Add Keywords:</b> Choose topics to track
+1. <b>Add Keywords:</b> Choose topics to track
    Examples:
-   • /addkeyword technology
-   • /addkeyword artificial intelligence
-   • /addkeyword politics
-   
-3. <b>Get Notifications:</b> We'll send you articles that match your keywords automatically! 🔔
+   • /add_keyword technology
+   • /add_keyword artificial intelligence
+   • /add_keyword neft qiyməti
 
-4. <b>Manage Keywords:</b>
-   • View: /mykeywords
-   • Remove: /removekeyword technology
+2. <b>Get Notifications:</b> AI finds semantically relevant articles and notifies you automatically! 🔔
+
+3. <b>Manage Keywords:</b>
+   • View: /my_keywords
+   • Remove: /remove_keyword technology
+
+<b>🧠 AI-Powered Matching:</b>
+Unlike simple text search, our system uses semantic embeddings.
+This means /add_keyword Şəki will match articles <i>about</i> Şəki city
+without false positives like 'şəkil' (picture).
 
 <b>💡 Tips:</b>
 • You can track multiple keywords
 • Notifications are sent instantly when new articles are found
-• Keywords are case-insensitive
-
-Need help? Contact support or try /start to begin!
+• News sources are scraped automatically every hour
 """
         return self.send_message(chat_id, help_message)
-    
-    def handle_register(self, chat_id, message):
-        """Handle /register command"""
-        telegram_username = message['chat'].get('username')
-        first_name = message['chat'].get('first_name', 'User')
-        
-        # Check if user has a Telegram username
-        if not telegram_username:
-            return self.send_message(
-                chat_id,
-                f"""❌ <b>Registration Failed</b>
-
-Hello {first_name}, you need to set a Telegram username first!
-
-<b>How to set a username:</b>
-1. Open Telegram Settings ⚙️
-2. Tap on your profile
-3. Edit the "Username" field
-4. Choose a unique username (e.g., john_doe)
-5. Save changes
-
-After setting your username, send /register again!"""
-            )
-        
-        try:
-            # Check if this chat_id is already registered
-            existing_profile = UserProfile.objects.filter(telegram_chat_id=chat_id).first()
-            if existing_profile:
-                return self.send_message(
-                    chat_id,
-                    f"""ℹ️ <b>Already Registered</b>
-
-You're already registered as <b>@{existing_profile.user.username}</b>!
-
-You can now:
-• Add keywords: /addkeyword TOPIC
-• View keywords: /mykeywords
-• Get help: /help"""
-                )
-            
-            # Check if username already exists
-            user = User.objects.filter(username=telegram_username).first()
-            if not user:
-                # Create new user with Telegram username
-                user = User.objects.create_user(
-                    username=telegram_username,
-                    email=f"{telegram_username}@telegram.user"
-                )
-            
-            # Create profile
-            profile = UserProfile.objects.create(
-                user=user,
-                telegram_chat_id=chat_id
-            )
-            
-            return self.send_message(
-                chat_id,
-                f"""✅ <b>Registration Successful!</b>
-
-Welcome <b>@{telegram_username}</b>! Your account is now active.
-
-<b>Next Steps:</b>
-1. Add your first keyword: /addkeyword technology
-2. View your keywords: /mykeywords
-3. Start receiving article notifications! 🔔
-
-<i>Tip: You can add multiple keywords to track different topics.</i>"""
-            )
-        except Exception as e:
-            logger.error(f"Error registering user: {e}")
-            return self.send_message(
-                chat_id,
-                "❌ Registration failed. Please try again or contact support."
-            )
-    
-    def handle_add_keyword(self, chat_id, text, message):
-        """Handle /addkeyword command"""
-        telegram_username = message['chat'].get('username')
-        
-        # Check if user has Telegram username
-        if not telegram_username:
-            return self.send_message(
-                chat_id,
-                "❌ You need to set a Telegram username first. Check /start for instructions."
-            )
-        
-        parts = text.split(maxsplit=1)
-        if len(parts) < 2:
-            return self.send_message(
-                chat_id,
-                "❌ Please provide a keyword.\n\n<b>Usage:</b> /addkeyword KEYWORD\n\n<b>Examples:</b>\n• /addkeyword technology\n• /addkeyword climate change\n• /addkeyword sports"
-            )
-        
-        keyword_text = parts[1].strip()
-        
-        try:
-            # Get user profile
-            profile = UserProfile.objects.filter(telegram_chat_id=chat_id).first()
-            if not profile:
-                return self.send_message(
-                    chat_id,
-                    "❌ Please register first using /register"
-                )
-            
-            # Create keyword
-            keyword, created = Keyword.objects.get_or_create(
-                user=profile.user,
-                keyword_name=keyword_text
-            )
-            
-            if created:
-                keyword_count = Keyword.objects.filter(user=profile.user).count()
-                return self.send_message(
-                    chat_id,
-                    f"""✅ <b>Keyword Added!</b>
-
-Keyword: <b>'{keyword_text}'</b>
-
-You'll receive instant notifications when articles match this keyword! 🔔
-
-<i>Total keywords: {keyword_count}</i>
-
-Add more: /addkeyword TOPIC
-View all: /mykeywords"""
-                )
-            else:
-                return self.send_message(
-                    chat_id,
-                    f"ℹ️ Keyword <b>'{keyword_text}'</b> is already in your tracking list."
-                )
-        except Exception as e:
-            logger.error(f"Error adding keyword: {e}")
-            return self.send_message(
-                chat_id,
-                "❌ Failed to add keyword. Please try again."
-            )
-    
-    def handle_remove_keyword(self, chat_id, text, message):
-        """Handle /removekeyword command"""
-        telegram_username = message['chat'].get('username')
-        
-        # Check if user has Telegram username
-        if not telegram_username:
-            return self.send_message(
-                chat_id,
-                "❌ You need to set a Telegram username first. Check /start for instructions."
-            )
-        
-        parts = text.split(maxsplit=1)
-        if len(parts) < 2:
-            return self.send_message(
-                chat_id,
-                "❌ Please provide a keyword.\n\n<b>Usage:</b> /removekeyword KEYWORD\n\n<b>Example:</b> /removekeyword technology"
-            )
-        
-        keyword_text = parts[1].strip()
-        
-        try:
-            # Get user profile
-            profile = UserProfile.objects.filter(telegram_chat_id=chat_id).first()
-            if not profile:
-                return self.send_message(
-                    chat_id,
-                    "❌ Please register first using /register"
-                )
-            
-            # Remove keyword
-            deleted_count = Keyword.objects.filter(
-                user=profile.user,
-                keyword_name=keyword_text
-            ).delete()[0]
-            
-            if deleted_count > 0:
-                keyword_count = Keyword.objects.filter(user=profile.user).count()
-                return self.send_message(
-                    chat_id,
-                    f"""✅ <b>Keyword Removed!</b>
-
-Removed: <b>'{keyword_text}'</b>
-
-You won't receive notifications for this keyword anymore.
-
-<i>Remaining keywords: {keyword_count}</i>
-
-View all: /mykeywords"""
-                )
-            else:
-                return self.send_message(
-                    chat_id,
-                    f"❌ Keyword <b>'{keyword_text}'</b> not found in your list.\n\nUse /mykeywords to see your current keywords."
-                )
-        except Exception as e:
-            logger.error(f"Error removing keyword: {e}")
-            return self.send_message(
-                chat_id,
-                "❌ Failed to remove keyword. Please try again."
-            )
-    
-    def handle_list_keywords(self, chat_id, message):
-        """Handle /mykeywords command"""
-        telegram_username = message['chat'].get('username')
-        
-        # Check if user has Telegram username
-        if not telegram_username:
-            return self.send_message(
-                chat_id,
-                "❌ You need to set a Telegram username first. Check /start for instructions."
-            )
-        
-        try:
-            # Get user profile
-            profile = UserProfile.objects.filter(telegram_chat_id=chat_id).first()
-            if not profile:
-                return self.send_message(
-                    chat_id,
-                    "❌ Please register first using /register"
-                )
-            
-            # Get keywords
-            keywords = Keyword.objects.filter(user=profile.user)
-            
-            if keywords.exists():
-                keyword_list = "\n".join([f"  {i+1}. {kw.keyword_name}" for i, kw in enumerate(keywords)])
-                message = f"""📋 <b>Your Tracked Keywords</b>
-
-{keyword_list}
-
-<i>📊 Total: {keywords.count()} keyword(s)</i>
-
-<b>Actions:</b>
-• Add keyword: /addkeyword TOPIC
-• Remove keyword: /removekeyword TOPIC"""
-            else:
-                message = """📋 <b>Your Keywords</b>
-
-You haven't added any keywords yet.
-
-<b>Get started:</b>
-Add your first keyword to start tracking articles!
-
-Example: /addkeyword technology
-
-You can track multiple topics like politics, sports, business, etc."""
-            
-            return self.send_message(chat_id, message)
-        except Exception as e:
-            logger.error(f"Error listing keywords: {e}")
-            return self.send_message(
-                chat_id,
-                "❌ Failed to retrieve keywords. Please try again."
-            )
     
     def run_polling(self):
         """Run bot with long polling"""
@@ -439,15 +172,181 @@ You can track multiple topics like politics, sports, business, etc."""
                 import time
                 time.sleep(5)
 
+    # ==================================================================
+    # NEW AI-powered semantic keyword handlers
+    # ==================================================================
 
-# Helper function to send notification
-def send_telegram_notification(user, article, keyword):
-    """Send article notification via Telegram"""
-    try:
-        profile = UserProfile.objects.filter(user=user).first()
-        if profile and profile.telegram_chat_id:
-            bot = TelegramBot()
-            return bot.send_article_notification(profile.telegram_chat_id, article, keyword)
-    except Exception as e:
-        logger.error(f"Error sending Telegram notification: {e}")
-    return None
+    def handle_add_semantic_keyword(self, chat_id: int, text: str, message: dict) -> Any:
+        """
+        Handle /add_keyword <keyword> — subscribe with semantic matching.
+
+        Creates a ``UserKeyword`` and dispatches embedding generation.
+        """
+        parts = text.split(maxsplit=1)
+        if len(parts) < 2:
+            return self.send_message(
+                chat_id,
+                "❌ Please provide a keyword.\n\n"
+                "<b>Usage:</b> /add_keyword KEYWORD\n\n"
+                "<b>Examples:</b>\n"
+                "• /add_keyword Şəki\n"
+                "• /add_keyword climate change\n"
+                "• /add_keyword neft qiyməti",
+            )
+
+        keyword_text = parts[1].strip()
+        user_id = message['from']['id']
+
+        try:
+            keyword, created = UserKeyword.objects.get_or_create(
+                user_id=user_id,
+                keyword=keyword_text,
+            )
+
+            if created:
+                # Dispatch alias generation + embedding asynchronously
+                from .tasks import generate_keyword_embedding
+                generate_keyword_embedding.delay(keyword.id)
+
+                count = UserKeyword.objects.filter(user_id=user_id).count()
+                return self.send_message(
+                    chat_id,
+                    f"✅ <b>Keyword Added!</b>\n\n"
+                    f"Keyword: <b>'{keyword_text}'</b>\n\n"
+                    f"🌐 Generating translations (EN, AZ, TR, RU, AR, FR, DE)...\n"
+                    f"The system will match articles in <i>any</i> of these languages!\n\n"
+                    f"<i>Total keywords: {count}</i>\n\n"
+                    f"Add more: /add_keyword TOPIC\n"
+                    f"View all: /my_keywords",
+                )
+            else:
+                return self.send_message(
+                    chat_id,
+                    f"ℹ️ Keyword <b>'{keyword_text}'</b> is already in your semantic tracking list.",
+                )
+        except Exception as e:
+            logger.error(f"Error adding semantic keyword: {e}")
+            return self.send_message(chat_id, "❌ Failed to add keyword. Please try again.")
+
+    def handle_remove_semantic_keyword(self, chat_id: int, text: str, message: dict) -> Any:
+        """Handle /remove_keyword <keyword> — remove semantic subscription."""
+        parts = text.split(maxsplit=1)
+        if len(parts) < 2:
+            return self.send_message(
+                chat_id,
+                "❌ Please provide a keyword.\n\n"
+                "<b>Usage:</b> /remove_keyword KEYWORD\n\n"
+                "<b>Example:</b> /remove_keyword Şəki",
+            )
+
+        keyword_text = parts[1].strip()
+        user_id = message['from']['id']
+
+        try:
+            deleted_count, _ = UserKeyword.objects.filter(
+                user_id=user_id,
+                keyword=keyword_text,
+            ).delete()
+
+            if deleted_count > 0:
+                remaining = UserKeyword.objects.filter(user_id=user_id).count()
+                return self.send_message(
+                    chat_id,
+                    f"✅ <b>Keyword Removed!</b>\n\n"
+                    f"Removed: <b>'{keyword_text}'</b>\n\n"
+                    f"You won't receive semantic matches for this keyword anymore.\n\n"
+                    f"<i>Remaining keywords: {remaining}</i>",
+                )
+            else:
+                return self.send_message(
+                    chat_id,
+                    f"❌ Keyword <b>'{keyword_text}'</b> not found.\n\n"
+                    f"Use /my_keywords to see your current keywords.",
+                )
+        except Exception as e:
+            logger.error(f"Error removing semantic keyword: {e}")
+            return self.send_message(chat_id, "❌ Failed to remove keyword. Please try again.")
+
+    def handle_list_semantic_keywords(self, chat_id: int, message: dict) -> Any:
+        """Handle /my_keywords — list all semantic keyword subscriptions."""
+        user_id = message['from']['id']
+
+        try:
+            keywords = UserKeyword.objects.filter(user_id=user_id).order_by('keyword')
+
+            if keywords.exists():
+                lines: list[str] = []
+                for i, kw in enumerate(keywords, 1):
+                    alias_count = len(kw.keyword_aliases) if kw.keyword_aliases else 0
+                    status = f"🌐 {alias_count} langs" if alias_count > 0 else "⏳ translating"
+                    lines.append(f"  {i}. {kw.keyword} ({status})")
+
+                keyword_list = "\n".join(lines)
+                msg = (
+                    f"📋 <b>Your Keywords</b>\n\n"
+                    f"{keyword_list}\n\n"
+                    f"🌐 = translations ready | ⏳ = processing\n\n"
+                    f"<i>📊 Total: {keywords.count()} keyword(s)</i>\n\n"
+                    f"<b>Actions:</b>\n"
+                    f"• Add keyword: /add_keyword TOPIC\n"
+                    f"• Remove keyword: /remove_keyword TOPIC\n"
+                    f"• Recent news: /latest_news"
+                )
+            else:
+                msg = (
+                    "📋 <b>Your Semantic Keywords</b>\n\n"
+                    "You haven't added any semantic keywords yet.\n\n"
+                    "<b>Get started:</b>\n"
+                    "/add_keyword Şəki\n"
+                    "/add_keyword neft qiyməti\n\n"
+                    "🧠 Semantic matching uses AI to find <i>relevant</i> news, "
+                    "not just exact text matches!"
+                )
+
+            return self.send_message(chat_id, msg)
+        except Exception as e:
+            logger.error(f"Error listing semantic keywords: {e}")
+            return self.send_message(chat_id, "❌ Failed to retrieve keywords. Please try again.")
+
+    def handle_latest_news(self, chat_id: int, message: dict) -> Any:
+        """Handle /latest_news — show recent matched articles (last 24h)."""
+        user_id = message['from']['id']
+
+        try:
+            cutoff = timezone.now() - timedelta(hours=24)
+            recent_sent = (
+                SentArticle.objects
+                .filter(user_id=user_id, sent_at__gte=cutoff)
+                .select_related('article', 'article__source')
+                .order_by('-sent_at')[:10]
+            )
+
+            if recent_sent:
+                lines: list[str] = []
+                for i, sa in enumerate(recent_sent, 1):
+                    score_pct = f"{sa.similarity_score:.0%}" if sa.similarity_score else "N/A"
+                    title = sa.article.title[:80] if sa.article else "Unknown"
+                    url = sa.article.url if sa.article else ""
+                    kw = sa.matched_keyword or "—"
+                    lines.append(
+                        f"{i}. <a href=\"{url}\">{title}</a>\n"
+                        f"   🔑 {kw} | 📊 {score_pct}"
+                    )
+
+                articles_text = "\n\n".join(lines)
+                msg = (
+                    f"📰 <b>Your Latest News (last 24h)</b>\n\n"
+                    f"{articles_text}\n\n"
+                    f"<i>Showing {len(recent_sent)} most recent matches</i>"
+                )
+            else:
+                msg = (
+                    "📰 <b>Your Latest News</b>\n\n"
+                    "No articles matched in the last 24 hours.\n\n"
+                    "Make sure you have keywords set up: /my_keywords"
+                )
+
+            return self.send_message(chat_id, msg)
+        except Exception as e:
+            logger.error(f"Error fetching latest news: {e}")
+            return self.send_message(chat_id, "❌ Failed to fetch recent news. Please try again.")
