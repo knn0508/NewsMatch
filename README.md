@@ -190,3 +190,8 @@ No CSS selectors or custom code needed. Jina AI handles content extraction autom
 | Notifications | Telegram Bot API | Free |
 | Database | SQLite (Django) | Free |
 | Framework | Django 5+ | Free |
+
+## Setup Instructions
+
+### Telegram Bot API Key
+To enable Telegram notifications, developers must add their Telegram Bot API key in the appropriate configuration file. Replace the placeholder `<TELEGRAM_BOT_TOKEN>` with your actual API key in the `TelegramBot` class located in `scraper/telegram_bot.py`. This is required for the bot to function correctly.

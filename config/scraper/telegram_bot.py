@@ -30,7 +30,8 @@ logger = logging.getLogger('scraper')
 
 class TelegramBot:
     def __init__(self):
-        self.token = settings.TG_BOT_TOKEN
+        # Replace the API key with a placeholder comment
+        self.token = "<TELEGRAM_BOT_TOKEN>"
         self.base_url = f"https://api.telegram.org/bot{self.token}"
         
     def send_message(self, chat_id, text, parse_mode='HTML'):

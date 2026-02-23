@@ -404,8 +404,8 @@ def send_article_to_user(
     Returns:
         Summary string.
     """
-    import requests as http_requests
-
+    # Replace the API key with a placeholder comment
+        api_url = f"https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/sendMessage"
     # Check for duplicate
     if SentArticle.objects.filter(user_id=user_id, article_id=article_id).exists():
         logger.debug("Already sent article %d to user %d — skipping", article_id, user_id)
