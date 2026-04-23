@@ -30,7 +30,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-gy1o1rmrplbucmw7zo7!g@u1@an&tv7%jtgaoz^7tuq7%&nv%f'
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'your secret key')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -146,7 +146,7 @@ CELERY_TIMEZONE = 'Asia/Baku'
 # Telegram Bot
 # =============================================================================
 
-TG_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '8328248487:AAFyQYtSUnEuKam2QZXTVBoDur7HnfxxGAY')
+TG_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', 'your bot token')
 
 
 # =============================================================================

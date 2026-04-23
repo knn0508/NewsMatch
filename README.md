@@ -55,7 +55,6 @@ Autonomous news monitoring system for Azerbaijani media. Scrapes news websites, 
 - Commands: `/start`, `/help`, `/add_keyword`, `/remove_keyword`, `/my_keywords`, `/latest_news`
 - Long-polling based (no webhooks needed)
 - Keyword aliases generated automatically on subscription
-- Telegram bot link: https://t.me/News_NotifierBot
 
 ## Project Structure
 
@@ -87,7 +86,7 @@ config/                          # Django project root
 │       └── run_telegram_bot.py       # Start the Telegram bot
 ├── manage.py
 ├── requirements.txt
-└── db.sqlite3
+└── db.sqlite3                  # local only, created by migrate; do not commit
 ```
 
 ## Setup
@@ -109,17 +108,40 @@ python manage.py migrate
 
 ### Configuration
 
-All settings are in `config/settings.py`:
+All settings are in `config/settings.py` and secrets should be provided through environment variables:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `TG_BOT_TOKEN` | env `TELEGRAM_BOT_TOKEN` | Telegram bot token |
+| `DJANGO_SECRET_KEY` | `"your secret key"` | Django secret key |
+| `TELEGRAM_BOT_TOKEN` | `"your bot token"` | Telegram bot token |
 | `JINA_API_KEY` | `""` (optional) | Jina AI API key for higher rate limits |
 | `ELASTICSEARCH_HOST` | `http://localhost:9200` | ElasticSearch URL |
+| `ELASTICSEARCH_USER` | `""` | ElasticSearch username |
+| `ELASTICSEARCH_PASSWORD` | `""` | ElasticSearch password |
 | `EMBEDDING_MODEL` | `paraphrase-multilingual-mpnet-base-v2` | Sentence-transformer model |
 | `SCRAPE_TIMEOUT` | `30` | HTTP timeout for scraping (seconds) |
 | `MAX_ARTICLES_PER_SCRAPE` | `20` | Max articles per source per run |
 | `SEMANTIC_TITLE_THRESHOLD` | `0.45` | Semantic matching threshold |
+
+PowerShell example:
+```powershell
+$env:DJANGO_SECRET_KEY="replace-with-a-real-secret-key"
+$env:TELEGRAM_BOT_TOKEN="replace-with-your-real-bot-token"
+$env:JINA_API_KEY=""
+$env:ELASTICSEARCH_HOST="http://localhost:9200"
+$env:ELASTICSEARCH_USER=""
+$env:ELASTICSEARCH_PASSWORD=""
+```
+
+Bash example:
+```bash
+export DJANGO_SECRET_KEY="replace-with-a-real-secret-key"
+export TELEGRAM_BOT_TOKEN="replace-with-your-real-bot-token"
+export JINA_API_KEY=""
+export ELASTICSEARCH_HOST="http://localhost:9200"
+export ELASTICSEARCH_USER=""
+export ELASTICSEARCH_PASSWORD=""
+```
 
 ### Running
 
@@ -192,7 +214,41 @@ No CSS selectors or custom code needed. Jina AI handles content extraction autom
 | Database | SQLite (Django) | Free |
 | Framework | Django 5+ | Free |
 
-## Setup Instructions
+## Publishing Safely
 
-### Telegram Bot API Key
-To enable Telegram notifications, developers must add their Telegram Bot API key in the appropriate configuration file. Replace the placeholder `<TELEGRAM_BOT_TOKEN>` with your actual API key in the `TelegramBot` class located in `scraper/telegram_bot.py`. This is required for the bot to function correctly.
+Best practice for a public repository:
+
+- Do not commit `config/db.sqlite3`. A committed SQLite database can expose user data, password hashes, article history, and local state.
+- Do not commit runtime/generated files such as `celerybeat-schedule*` and `__pycache__/`.
+- Do not hardcode secrets in source files. Set them through environment variables instead.
+- Rotate any secret that was ever committed before publishing this repository.
+
+Why removing the database is safe:
+
+- Django stores the schema in migration files under `config/scraper/migrations/`.
+- A new developer can recreate the database by running `python manage.py migrate`.
+- If you need demo data, publish fixtures or a seed script instead of a real database file.
+
+How to verify a fresh clone works without `db.sqlite3`:
+
+```bash
+cd config
+pip install -r requirements.txt
+python manage.py migrate
+python manage.py createsuperuser
+python manage.py runserver
+```
+
+If `migrate` succeeds, Django has recreated the database structure correctly.
+
+## Replacing Secrets
+
+Before running the app, replace all placeholder secrets by setting environment variables:
+
+- `DJANGO_SECRET_KEY`
+- `TELEGRAM_BOT_TOKEN`
+- `JINA_API_KEY` (optional)
+- `ELASTICSEARCH_USER` (optional)
+- `ELASTICSEARCH_PASSWORD` (optional)
+
+The app reads these values from `config/settings.py`. You should not edit the bot token directly inside `scraper/telegram_bot.py`.

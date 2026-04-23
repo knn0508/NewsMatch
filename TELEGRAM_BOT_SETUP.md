@@ -82,9 +82,16 @@ python manage.py run_telegram_bot
 
 ## Bot Token Configuration
 
-Your bot token is already configured in `config/settings.py`:
-```python
-TG_BOT_TOKEN = "8328248487:AAFyQYtSUnEuKam2QZXTVBoDur7HnfxxGAY"
+Set the Telegram bot token through an environment variable before starting the bot:
+
+PowerShell:
+```powershell
+$env:TELEGRAM_BOT_TOKEN="replace-with-your-real-bot-token"
+```
+
+Bash:
+```bash
+export TELEGRAM_BOT_TOKEN="replace-with-your-real-bot-token"
 ```
 
 ## Architecture
